@@ -1,0 +1,217 @@
+---
+Resources:
+  VPC1:
+    Type : AWS::EC2::VPC
+    Properties:
+      CidrBlock : 10.0.0.0/16
+      Tags:
+       - Key: Name
+          Value: VPC1
+ 
+  PublicSubnet1:
+    Type : AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC1
+      CidrBlock : 10.0.0.0/24
+      Tags:
+       - Key: Name
+         Value: PublicSubnet1 
+      AvailabilityZone: us-east-2a
+      MapPublicIpOnLaunch: true
+  
+  PublicSubnet2:
+    Type : AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC1
+      CidrBlock : 10.0.1.0/24
+      Tags:
+       - Key: Name
+         Value: PublicSubnet2 
+      AvailabilityZone: us-east-2b
+      MapPublicIpOnLaunch: true
+
+  InternetGateway:
+     Type: AWS::EC2::InternetGateway
+     Properties:
+       Tags:
+        - Key: Name
+          Value: IGW
+
+  AttachGateway:
+     Type: AWS::EC2::VPCGatewayAttachment
+     Properties:
+       VpcID: !Ref VPC1
+       InternetGatewayID: !Ref InternetGateway
+
+  Public1rt:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC1
+      Tags:
+       - Key: Name
+         Value: Public1rt
+
+  Public2rt:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC1
+      Tags:
+       - Key: Name
+         Value: Public2rt
+
+  Route1:
+    Type: AWS::EC2::Route
+    DependsOn: AttachGateway
+    Properties: 
+      RouteTableId: !Ref Public1rt
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  Route2:
+    Type: AWS::EC2::Route
+    DependsOn: AttachGateway
+    Properties: 
+      RouteTableId: !Ref Public2rt
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  SubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet1
+      RouteTableId: !Ref Public1rt
+
+  SubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet2
+      RouteTableId: !Ref Public2rt
+
+  SSHSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VPC1
+      GroupDescription: Webservers-SG
+      Tags:
+       - Key: Name
+         Value: Webservers-SG
+      SecurityGroupIngress:
+       -CidrIp: 0.0.0.0/0
+        FromPort: 22
+        IpProtocol: tcp
+        ToPort: 22
+
+  WebSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VPC1
+      GroupDescription: Enable HTTP access via user defined port
+      SecurityGroupIngress:
+       -CidrIp: 0.0.0.0/0
+        FromPort: 80
+        IpProtocol: tcp
+        ToPort: 80  
+
+  ENIJupbox:
+    Type: AWS::EC2::NetworkInterface
+    Properties:
+      SubnetId: !Ref PublicSubnet1
+      GroupSet:
+      - Ref: SSHSecurityGroup
+        
+  JumpboxInstance:
+    Type: AWS::EC2::Instance
+    DependsOn: AttachGateway
+    Properties:
+      ImageId: ami-00dfe2c7ce89a450b
+      InstanceType: t2.micro
+      Tags:
+       - Key: Name
+         Value: Jumpbox
+       NetworkInterfaces:
+       - NetworkInterfaceId:
+          Ref: ENIJumpbox
+         DeviceIndex: 0
+       UserData
+         Fn::Base64:
+            !Sub |
+               #/bin/bash
+               sudo yum update -y
+               sudo amazon-linux-extras install docker -y
+               sudo serverice docker start
+               sudo chkconfig docker on
+               sudo usermod -a -G docker ec2-user
+               sudo docker pull cyberxsecurity/ansible
+       KeyName: !Ref SSHKey
+
+  ENIELK
+    Type: AWS::EC2::NetworkInterface
+    Properties:
+      SubnetId: !Ref PublicSubnet1   
+      GroupSet:
+      - Ref: SSHSecurityGroup
+
+  ELKInstance:
+    Type: AWS::EC2::Instance
+    DependsOn: AttachGateway
+    Properties:
+      ImageId: ami-0b9064170e32bde34
+      InstanceType: t2.medium
+      Tags:
+       - Key: Name
+         Value: ELK-Server
+      NetworkInterfaces:
+      - NetworkInterfaceId:
+         Ref: ENIELK
+        DeviceIndex: 0
+      KeyName: !Ref SSHKey
+
+  ENI1:
+    Type: AWS::EC2::NetworkInterface
+    Properties:
+      SubnetId: !Ref PublicSubnet1
+      GroupSet:
+      - Ref: SSHSecurityGroup
+
+  WebServer1Instance:
+    Type: AWS::EC2::Instance
+    DependsOn: AttachGateway
+    Properties:
+      ImageId: ami-00dfe2c7ce89a450b
+      InstanceType: t2.micro
+      Tags:
+       - Key: Name
+         Value: Webserver1
+      NetorkInterfaces:
+      - NetworkInterfaceId:
+         Ref: ENI1
+        DeviceIndex: o
+      KeyName: !Ref SSHKey
+
+   ENI2:
+    Type: AWS::EC2::NetworkInterface
+    Properties:
+      SubnetId: !Ref PublicSubnet2
+      GroupSet:
+      - Ref: SSHSecurityGroup
+
+  WebServer2Instance:
+    Type: AWS::EC2::Instance
+    DependsOn: AttachGateway
+    Properties:
+      ImageId: ami-00dfe2c7ce89a450b
+      InstanceType: t2.micro
+      Tags:
+       - Key: Name
+         Value: Webserver2
+      NetorkInterfaces:
+      - NetworkInterfaceId:
+         Ref: ENI2
+        DeviceIndex: o
+      KeyName: !Ref SSHKey
+
+  Parameters:
+    SSHKey:
+      Type: AWS::EC2::KeyPair::KeyName
+           
+      
